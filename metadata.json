@@ -1,0 +1,32 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "stakillion",
+                "Email": "stakillion@gmail.com"
+            },
+            {
+                "Name": "Eike Hein",
+                "Email": "hein@kde.org"
+            }
+        ],
+        "Category": "Windows and Tasks",
+        "Description": "Icons-Only Task Manager with Veronica customizations",
+        "EnabledByDefault": true,
+        "Icon": "preferences-system-windows",
+        "Id": "stakillion.veronica.tasks",
+        "License": "GPL-2.0+",
+        "Name": "Veronica Tasks",
+        "ServiceTypes": [
+            "Plasma/Applet"
+        ],
+        "Version": "1.0.0",
+        "Website": "https://n3.pm"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml",
+    "X-Plasma-Provides": [
+        "org.kde.plasma.multitasking"
+    ]
+}
