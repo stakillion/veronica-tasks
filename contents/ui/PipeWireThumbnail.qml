@@ -12,6 +12,8 @@ PipeWire.PipeWireSourceItem {
     id: pipeWireSourceItem
 
     readonly property alias hasThumbnail: pipeWireSourceItem.ready
+    readonly property alias streamSize: pipeWireSourceItem.streamSize
+    readonly property alias paintedRect: pipeWireSourceItem.paintedRect
 
     anchors.fill: parent
     nodeId: waylandItem.nodeId

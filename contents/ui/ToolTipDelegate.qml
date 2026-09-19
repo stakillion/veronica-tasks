@@ -38,6 +38,7 @@ Loader {
     property bool isLauncher
     property bool isMinimized
     property bool isReadyForPainting
+    property rect winGeometry: Qt.rect(0, 0, 0, 0)
 
     // Needed for generateSubtext()
     property string display
@@ -74,6 +75,7 @@ Loader {
             submodelIndex: toolTipDelegate.rootIndex
             appPid: toolTipDelegate.pidParent
             display: toolTipDelegate.display
+            winGeometry: toolTipDelegate.winGeometry
             isMinimized: toolTipDelegate.isMinimized
             isReadyForPainting: toolTipDelegate.isReadyForPainting
             isOnAllVirtualDesktops: toolTipDelegate.isOnAllVirtualDesktops
@@ -98,7 +100,8 @@ Loader {
                    ? toolTipDelegate.tooltipInstanceMaximumWidth + (toolTipDelegate.isWin && Plasmoid.configuration.showToolTips ? 0 : Kirigami.Units.gridUnit)
                    : groupToolTipListView.contentWidth
 
-                return leftPadding + rightPadding + Math.min(maximumWidth, Math.max(delegateModel.estimatedWidth, listContentWidth))
+                let effectiveWidth = listContentWidth > 0 ? listContentWidth : delegateModel.estimatedWidth;
+                return leftPadding + rightPadding + Math.min(maximumWidth, effectiveWidth);
             }
 
             implicitHeight: {
@@ -111,9 +114,10 @@ Loader {
                 // that estimatedHeight while it's not available
                 let listContentHeight = groupToolTipListView.orientation == ListView.Vertical
                     ? groupToolTipListView.contentHeight
-                    : groupToolTipListView.currentItem?.implicitHeight ?? toolTipDelegate.tooltipInstanceMaximumWidth
+                    : (groupToolTipListView.currentItem?.implicitHeight ?? (toolTipDelegate.tooltipInstanceMaximumWidth / 2))
 
-                return Math.min(maximumHeight, Math.max(delegateModel.estimatedHeight, listContentHeight + scrollBarHeight))
+                let effectiveHeight = listContentHeight > 0 ? listContentHeight : delegateModel.estimatedHeight;
+                return Math.min(maximumHeight, effectiveHeight + scrollBarHeight);
             }
 
             ListView {
@@ -163,6 +167,7 @@ Loader {
                     submodelIndex: tasksModel.makeModelIndex(toolTipDelegate.rootIndex.row, index)
                     appPid: model.AppPid
                     // 'display' is required already
+                    winGeometry: model.Geometry ?? Qt.rect(0, 0, 0, 0)
                     isMinimized: model.IsMinimized
                     isReadyForPainting: model.Geometry.width > 0 && model.Geometry.height > 0
                     isOnAllVirtualDesktops: model.IsOnAllVirtualDesktops

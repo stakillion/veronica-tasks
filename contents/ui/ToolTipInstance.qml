@@ -35,45 +35,81 @@ ColumnLayout {
     required property list<string> activities
     required property bool isReadyForPainting
 
+    property rect winGeometry: Qt.rect(0, 0, 0, 0)
     property bool hasTrackInATitle: false
     property int orientation: ListView.Vertical // vertical for compact single-window tooltips
     readonly property var pulseAudio: toolTipDelegate.parentTask ? toolTipDelegate.parentTask.pulseAudio : null
 
-    // HACK: Avoid blank space in the tooltip after closing a window
-    ListView.onPooled: width = height = 0
-    ListView.onReused: width = height = undefined
+    // Window aspect ratio computation using intrinsic window/stream dimensions
+    readonly property real windowAspectRatio: {
+        const pw = pipeWireLoader.item;
+        if (pw && pw.streamSize && pw.streamSize.height > 0 && pw.streamSize.width > 0) {
+            return pw.streamSize.width / pw.streamSize.height;
+        }
+        const geom = (root.winGeometry && root.winGeometry.height > 0)
+            ? root.winGeometry
+            : (root.model?.Geometry ?? Qt.rect(0, 0, 0, 0));
+        if (geom && geom.height > 0 && geom.width > 0) {
+            return geom.width / geom.height;
+        }
+        return 16 / 9;
+    }
 
-    readonly property string title: {
-        if (!toolTipDelegate.isWin) {
-            return toolTipDelegate.genericName;
+    readonly property real maxPreviewWidth: toolTipDelegate.tooltipInstanceMaximumWidth
+    readonly property real maxPreviewHeight: Math.round(Kirigami.Units.gridUnit * 8.5)
+    readonly property real minPreviewWidth: Math.round(Kirigami.Units.gridUnit * 8.5)
+    readonly property real minPreviewHeight: Math.round(Kirigami.Units.gridUnit * 5)
+
+    readonly property real previewWidth: {
+        if (!toolTipDelegate.isWin || !Plasmoid.configuration.showToolTips) {
+            return toolTipDelegate.tooltipInstanceMaximumWidth;
+        }
+        const ar = windowAspectRatio;
+        const maxAr = maxPreviewWidth / maxPreviewHeight;
+        if (ar >= maxAr) {
+            return maxPreviewWidth;
+        } else {
+            return Math.max(minPreviewWidth, Math.min(maxPreviewWidth, Math.round(maxPreviewHeight * ar)));
+        }
+    }
+
+    readonly property real previewHeight: {
+        if (!toolTipDelegate.isWin || !Plasmoid.configuration.showToolTips) {
+            return 0;
+        }
+        const ar = windowAspectRatio;
+        const maxAr = maxPreviewWidth / maxPreviewHeight;
+        if (ar >= maxAr) {
+            return Math.max(minPreviewHeight, Math.round(maxPreviewWidth / ar));
+        } else {
+            return maxPreviewHeight;
+        }
+    }
+
+    readonly property string windowTitleText: {
+        let text = "";
+        if (display && display.length > 0) {
+            text = display;
+        } else if (root.title && root.title.length > 0 && root.title !== "—") {
+            text = root.title;
+        } else {
+            text = toolTipDelegate.appName;
         }
 
-        let text = display;
-        if (toolTipDelegate.isGroup && text === "") {
-            return "";
-        }
-
-        // Normally the window title will always have " — [app name]" at the end of
-        // the window-provided title. But if it doesn't, this is intentional 100%
-        // of the time because the developer or user has deliberately removed that
-        // part, so just display it with no more fancy processing.
-        if (!text.match(/\s+(—|-|–)/)) {
-            return text;
-        }
-
-        // KWin appends increasing integers in between pointy brackets to otherwise equal window titles.
-        // In this case save <#number> as counter and delete it at the end of text.
-        text = `${(text.match(/.*(?=\s+(—|-|–))/) || [""])[0]}${(text.match(/<\d+>/) || [""]).pop()}`;
-
-        // In case the window title had only redundant information (i.e. appName), text is now empty.
-        // Add a hyphen to indicate that and avoid empty space.
-        if (text === "") {
-            text = "—";
+        const sub = toolTipDelegate.isWin ? root.generateSubText() : "";
+        if (sub && sub.length > 0 && sub !== toolTipDelegate.appName) {
+            return `${text} (${sub})`;
         }
         return text;
     }
 
-    readonly property bool titleIncludesTrack: toolTipDelegate.playerData !== null && title.includes(toolTipDelegate.playerData.track)
+    Layout.preferredWidth: previewWidth
+    Layout.maximumWidth: maxPreviewWidth
+    implicitWidth: previewWidth
+
+    // HACK: Avoid blank space in the tooltip after closing a window
+    ListView.onPooled: width = height = 0
+    ListView.onReused: width = height = undefined
 
     // Lots of spacing with no thumbnails looks bad
     spacing: Plasmoid.configuration.showToolTips ? Kirigami.Units.smallSpacing : 0
@@ -82,12 +118,11 @@ ColumnLayout {
     Item {
         id: headerItem
         implicitHeight: header.height
-        implicitWidth: header.implicitWidth
+        implicitWidth: root.previewWidth
         Layout.fillWidth: true
-
-        // This number controls the overall size of the window tooltips
-        Layout.maximumWidth: toolTipDelegate.tooltipInstanceMaximumWidth
-        Layout.minimumWidth: (toolTipDelegate.isWin && Plasmoid.configuration.showToolTips) || toolTipDelegate.isGroup ? Layout.maximumWidth : 0
+        Layout.preferredWidth: root.previewWidth
+        Layout.maximumWidth: root.previewWidth
+        Layout.minimumWidth: root.minPreviewWidth
         Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
         // match margins of DefaultToolTip.qml in plasma-framework
         Layout.margins: toolTipDelegate.isWin && Plasmoid.configuration.showToolTips ? 0 : Kirigami.Units.gridUnit / 2
@@ -95,84 +130,38 @@ ColumnLayout {
         RowLayout {
             id: header
             width: parent.width
-            // match spacing of DefaultToolTip.qml in plasma-framework
             spacing: Kirigami.Units.smallSpacing
 
-            // close button for right edge ltr and left edge rtl
-            LayoutItemProxy {
-                id: closeButtonFlippedItemProxy
-                target: closeButton
-                visible: toolTipDelegate.isWin &&
-                    ((Plasmoid.location == PlasmaCore.Types.LeftEdge &&
-                      Application.layoutDirection == Qt.RightToLeft) ||
-                     (Plasmoid.location == PlasmaCore.Types.RightEdge &&
-                      Application.layoutDirection == Qt.LeftToRight))
+            // Window icon
+            Kirigami.Icon {
+                id: windowIcon
+                visible: toolTipDelegate.isWin && Plasmoid.configuration.showToolTips
+                Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                Layout.alignment: Qt.AlignVCenter
+                source: toolTipDelegate.icon
             }
 
-            // all textlabels
-            ColumnLayout {
-                spacing: 0
-                // app name
-                Kirigami.Heading {
-                    id: appNameHeading
-                    level: 3
-                    maximumLineCount: 1
-                    Layout.fillWidth: true
-                    lineHeight: toolTipDelegate.isWin && Plasmoid.configuration.showToolTips ? 1 : appNameHeading.lineHeight
-                    elide: Text.ElideRight
-                    text: toolTipDelegate.appName
-                    color: (headerHoverHandler.visible && headerHoverHighlight.pressed) ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
-                    opacity: root.index === 0 ? 1 : 0
-                    visible: (text.length !== 0) && (root.orientation === ListView.Horizontal || root.index === 0)
-                    textFormat: Text.PlainText
-                }
-                // window title
-                PlasmaComponents3.Label {
-                    id: winTitle
-                    Layout.fillWidth: true
-                    // For horizontal grouped tasks, leave room for two lines so thumbnails align
-                    Layout.preferredHeight: root.orientation === ListView.Horizontal && lineCount === 1
-                        ? implicitHeight * 2
-                        : implicitHeight
-                    maximumLineCount: 2
-                    wrapMode: Text.Wrap
-                    elide: Text.ElideRight
-                    verticalAlignment: Text.AlignVCenter
-                    property bool somethingVisible: (thumbnailSourceItem.visible ||
-                        appNameHeading.visible || subtext.visible)
-                    text: ((root.titleIncludesTrack && playerController.active) ||
-                           (root.title === appNameHeading.text && somethingVisible))
-                          ? "" : root.title
-                    color: (headerHoverHandler.visible && headerHoverHighlight.pressed) ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
-                    opacity: 0.75
-                    font.bold: toolTipDelegate.isGroup && toolTipDelegate.parentTask.model.IsActive && root.index == tasksModel.activeTask.row
-                    visible: root.orientation === ListView.Horizontal || text.length !== 0
-                    textFormat: Text.PlainText
-                }
-                // subtext
-                PlasmaComponents3.Label {
-                    id: subtext
-                    Layout.fillWidth: true
-                    // For horizontal grouped tasks, leave room for two lines so thumbnails align
-                    Layout.preferredHeight: root.orientation === ListView.Horizontal && lineCount === 1
-                        ? implicitHeight * 2
-                        : implicitHeight
-                    maximumLineCount: 2
-                    wrapMode: Text.Wrap
-                    elide: Text.ElideRight
-                    verticalAlignment: Text.AlignVCenter
-                    text: toolTipDelegate.isWin ? root.generateSubText() : ""
-                    color: (headerHoverHandler.visible && headerHoverHighlight.pressed) ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
-                    opacity: 0.75
-                    visible: text.length !== 0 && text !== appNameHeading.text
-                    textFormat: Text.PlainText
-                }
+            // Single line window title (or app name for launchers)
+            PlasmaComponents3.Label {
+                id: winTitle
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                maximumLineCount: 1
+                wrapMode: Text.NoWrap
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
+                text: toolTipDelegate.isWin ? root.windowTitleText : (toolTipDelegate.genericName ? `${toolTipDelegate.appName} — ${toolTipDelegate.genericName}` : toolTipDelegate.appName)
+                font.bold: toolTipDelegate.isGroup && toolTipDelegate.parentTask.model.IsActive && root.index == tasksModel.activeTask.row
+                font.weight: toolTipDelegate.isWin ? Font.Normal : Font.DemiBold
+                color: (headerHoverHandler.visible && headerHoverHighlight.pressed) ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
+                opacity: (headerHoverHandler.visible && headerHoverHighlight.pressed) ? 1.0 : 0.90
+                textFormat: Text.PlainText
             }
 
-            // Count badge.
-            // The badge itself is inside an item to better center the text in the bubble
+            // Count badge
             Item {
-                Layout.alignment: !Plasmoid.configuration.showToolTips && !playerController.active && !volumeControls.active ? Qt.AlignVCenter : Qt.AlignTop
+                Layout.alignment: Qt.AlignVCenter
                 Layout.preferredHeight: closeButton.height
                 Layout.preferredWidth: closeButton.width
                 visible: root.index === 0 && toolTipDelegate.smartLauncherCountVisible
@@ -183,19 +172,14 @@ ColumnLayout {
                 }
             }
 
-            LayoutItemProxy {
-                target: closeButton
-                visible: toolTipDelegate.isWin && !closeButtonFlippedItemProxy.visible
-            }
-
-            // close button
+            // Close button
             PlasmaComponents3.ToolButton {
                 id: closeButton
-                Layout.alignment: Qt.AlignTop
-                Layout.rightMargin: closeButtonFlippedItemProxy.visible ? headerItem.Layout.margins : -headerItem.Layout.margins
-                Layout.leftMargin: closeButtonFlippedItemProxy.visible ? -headerItem.Layout.margins : headerItem.Layout.margins
-                Layout.topMargin: -headerItem.Layout.margins
+                visible: toolTipDelegate.isWin
+                Layout.alignment: Qt.AlignVCenter
                 icon.name: "window-close"
+                icon.width: Kirigami.Units.iconSizes.small
+                icon.height: Kirigami.Units.iconSizes.small
                 onClicked: {
                     tasks.cancelHighlightWindows();
                     tasksModel.requestClose(root.submodelIndex);
@@ -236,8 +220,11 @@ ColumnLayout {
     Item {
         id: thumbnailSourceItem
 
-        Layout.fillWidth: true
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 8
+        Layout.alignment: Qt.AlignHCenter
+        Layout.preferredWidth: root.previewWidth
+        Layout.preferredHeight: root.previewHeight
+        width: root.previewWidth
+        height: root.previewHeight
 
         clip: true
         visible: Plasmoid.configuration.showToolTips && toolTipDelegate.isWin
@@ -245,9 +232,31 @@ ColumnLayout {
         readonly property /*undefined|WId where WId = int|string*/ var winId:
             toolTipDelegate.isWin ? toolTipDelegate.windows[root.index] : undefined
 
+        // Background card scaled to fit the exact aspect ratio of the window
+        Rectangle {
+            id: previewBackgroundCard
+            anchors.fill: parent
+            radius: 4
+            color: (hoverHandler.item as MouseArea)?.containsMouse
+                ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.20)
+                : Qt.rgba(0, 0, 0, 0.35)
+            border.color: (hoverHandler.item as MouseArea)?.containsMouse
+                ? Kirigami.Theme.highlightColor
+                : Qt.rgba(1, 1, 1, 0.16)
+            border.width: 1
+            z: -1
+
+            Behavior on color {
+                ColorAnimation { duration: Kirigami.Units.shortDuration }
+            }
+            Behavior on border.color {
+                ColorAnimation { duration: Kirigami.Units.shortDuration }
+            }
+        }
+
         // There's no PlasmaComponents3 version
         PlasmaExtras.Highlight {
-            anchors.fill: hoverHandler
+            anchors.fill: previewBackgroundCard
             visible: (hoverHandler.item as MouseArea)?.containsMouse ?? false
             pressed: (hoverHandler.item as MouseArea)?.containsPress ?? false
             hovered: true
@@ -256,7 +265,6 @@ ColumnLayout {
         Loader {
             id: thumbnailLoader
             active: !toolTipDelegate.isLauncher
-                && !albumArtImage.visible
                 && (Number.isInteger(thumbnailSourceItem.winId) || pipeWireLoader.item
                 && !(pipeWireLoader.item as PipeWireThumbnail).hasThumbnail)
                 && root.index !== -1 // Avoid loading when the instance is going to be destroyed
@@ -318,7 +326,6 @@ ColumnLayout {
 
             active: Plasmoid.configuration.showToolTips
                 && !toolTipDelegate.isLauncher
-                && !albumArtImage.visible
                 && KWindowSystem.isPlatformWayland
                 && toolTipDelegate.isReadyForPainting
                 && root.index !== -1
@@ -340,56 +347,8 @@ ColumnLayout {
                 radius: 8
                 samples: Math.round(radius * 1.5)
                 color: "Black"
-                source: pipeWireLoader.active ? pipeWireLoader.item : thumbnailLoader.item // source could be undefined when albumArt is available, so put it in a Loader.
+                source: pipeWireLoader.active ? pipeWireLoader.item : thumbnailLoader.item
             }
-        }
-
-        Loader {
-            active: Plasmoid.configuration.showToolTips
-                && albumArtImage.visible
-                && albumArtImage.status === Image.Ready
-                && root.index !== -1 // Avoid loading when the instance is going to be destroyed
-            asynchronous: true
-            visible: active
-            anchors.centerIn: hoverHandler
-
-            sourceComponent: ShaderEffect {
-                id: albumArtBackground
-                readonly property Image source: albumArtImage
-
-                // Manual implementation of Image.PreserveAspectCrop
-                readonly property real scaleFactor: Math.max(hoverHandler.width / source.paintedWidth, hoverHandler.height / source.paintedHeight)
-                width: Math.round(source.paintedWidth * scaleFactor)
-                height: Math.round(source.paintedHeight * scaleFactor)
-                layer.enabled: true
-                opacity: 0.25
-                layer.effect: GE.FastBlur {
-                    source: albumArtBackground
-                    anchors.fill: source
-                    radius: 30
-                }
-            }
-        }
-
-        Image {
-            id: albumArtImage
-            // also Image.Loading to prevent loading thumbnails just because the album art takes a split second to load
-            // if this is a group tooltip, we check if window title and track match, to allow distinguishing the different windows
-            // if this app is a browser, we also check the title, so album art is not shown when the user is on some other tab
-            // in all other cases we can safely show the album art without checking the title
-            readonly property bool available: (status === Image.Ready || status === Image.Loading)
-                && (!(toolTipDelegate.isGroup || backend.applicationCategories(launcherUrl).includes("WebBrowser")) || root.titleIncludesTrack)
-
-            anchors.fill: hoverHandler
-            // Indent by one pixel to make sure we never cover up the entire highlight
-            anchors.margins: 1
-            sourceSize: Qt.size(parent.width, parent.height)
-
-            asynchronous: true
-            retainWhileLoading: true
-            source: toolTipDelegate.playerData?.artUrl ?? ""
-            fillMode: Image.PreserveAspectFit
-            visible: available
         }
 
         // hoverHandler has to be unloaded after the instance is pooled in order to avoid getting the old containsMouse status when the same instance is reused, so put it in a Loader.
@@ -413,12 +372,12 @@ ColumnLayout {
         // when the instance is going to be destroyed
         active: (toolTipDelegate.parentTask?.tooltipControlsEnabled
              && toolTipDelegate.playerData
-             && ((root.hasTrackInATitle && albumArtImage.available) || (!root.hasTrackInATitle && root.index == 0))) ?? false
+             && (root.hasTrackInATitle || root.index == 0)) ?? false
 
         asynchronous: true
         visible: active
         Layout.fillWidth: true
-        Layout.maximumWidth: headerItem.Layout.maximumWidth
+        Layout.maximumWidth: root.previewWidth
         Layout.leftMargin: headerItem.Layout.margins
         Layout.rightMargin: headerItem.Layout.margins
 
@@ -435,11 +394,11 @@ ColumnLayout {
              // Only load for one entry, as the controls only apply to one window.
              // If this is changed in the future, test for index != -1 to avoid loading
              // when the instance is going to be destroyed
-             && ((hasTrackInATitle && albumArtImage.available) || (!hasTrackInATitle && root.index == 0))
+             && (root.hasTrackInATitle || root.index == 0)
         asynchronous: true
         visible: active
         Layout.fillWidth: true
-        Layout.maximumWidth: headerItem.Layout.maximumWidth
+        Layout.maximumWidth: root.previewWidth
         Layout.leftMargin: headerItem.Layout.margins
         Layout.rightMargin: headerItem.Layout.margins
         sourceComponent: RowLayout {
@@ -553,6 +512,6 @@ ColumnLayout {
             }
         }
 
-        return subTextEntries.join("\n");
+        return subTextEntries.join(", ");
     }
 }
