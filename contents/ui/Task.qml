@@ -478,7 +478,7 @@ PlasmaCore.ToolTipArea {
 
     // Underlying stacked cards for multi-window tasks: non-overlapping clipped bands
     // so underlying cards never double-draw or alpha-blend on top of each other!
-    // Band 1: Card 1 (4px peeking band from frame.right to frame.right + 4)
+    // Band 1: Card 1 (5px peeking band from frame.right to frame.right + 5)
     Item {
         id: c1Container
         visible: frame.isMultiWindow
@@ -486,7 +486,7 @@ PlasmaCore.ToolTipArea {
 
         anchors.left: frame.right
         anchors.leftMargin: -1
-        width: 5
+        width: 6
         anchors.top: frame.top
         anchors.bottom: frame.bottom
         clip: true
@@ -514,8 +514,8 @@ PlasmaCore.ToolTipArea {
                     strokeColor: "transparent"
                     fillGradient: RadialGradient {
                         centerX: (taskHoverHandler.hovered && taskHoverHandler.point?.position?.x !== undefined
-                            ? taskHoverHandler.point.position.x - (frame.x + 4)
-                            : frame.glowCenterX - 4)
+                            ? taskHoverHandler.point.position.x - (frame.x + 5)
+                            : frame.glowCenterX - 5)
                         centerY: peekingCard1.height - 1
                         centerRadius: Math.max(frame.width, frame.height) * 2.2
                         focalX: centerX
@@ -556,7 +556,7 @@ PlasmaCore.ToolTipArea {
         }
     }
 
-    // Band 2: Card 2 (4px peeking band from card1.right to card1.right + 4, 3+ windows only)
+    // Band 2: Card 2 (5px peeking band from card1.right to card1.right + 5, 3+ windows only)
     Item {
         id: c2Container
         visible: frame.isMultiWindow && frame.windowCount > 2
@@ -564,7 +564,7 @@ PlasmaCore.ToolTipArea {
 
         anchors.left: c1Container.right
         anchors.leftMargin: -1
-        width: 5
+        width: 6
         anchors.top: frame.top
         anchors.bottom: frame.bottom
         clip: true
@@ -592,8 +592,8 @@ PlasmaCore.ToolTipArea {
                     strokeColor: "transparent"
                     fillGradient: RadialGradient {
                         centerX: (taskHoverHandler.hovered && taskHoverHandler.point?.position?.x !== undefined
-                            ? taskHoverHandler.point.position.x - (frame.x + 8)
-                            : frame.glowCenterX - 8)
+                            ? taskHoverHandler.point.position.x - (frame.x + 10)
+                            : frame.glowCenterX - 10)
                         centerY: peekingCard2.height - 1
                         centerRadius: Math.max(frame.width, frame.height) * 2.2
                         focalX: centerX
@@ -651,13 +651,13 @@ PlasmaCore.ToolTipArea {
         readonly property bool isMultiWindow: !model.IsLauncher && ((model.IsGroupParent && childCount > 1) || (model.WinIdList && model.WinIdList.length > 1) || childCount > 1)
         readonly property int windowCount: model.WinIdList ? model.WinIdList.length : (model.IsGroupParent ? childCount : 1)
 
-        width: isMultiWindow ? (windowCount > 2 ? parent.width - 12 : parent.width - 8) : (parent.width - 4)
+        width: isMultiWindow ? (windowCount > 2 ? parent.width - 14 : parent.width - 9) : (parent.width - 4)
         anchors.top: parent.top
         anchors.topMargin: 1
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 1
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.horizontalCenterOffset: isMultiWindow ? (windowCount > 2 ? -4 : -2) : 0
+        anchors.horizontalCenterOffset: isMultiWindow ? (windowCount > 2 ? -5 : -2.5) : 0
         radius: 4
         clip: true
 
