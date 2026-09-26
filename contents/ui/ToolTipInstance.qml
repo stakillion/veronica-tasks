@@ -388,7 +388,7 @@ ColumnLayout {
     Loader {
         id: volumeControls
         active: toolTipDelegate.parentTask !== null
-             && pulseAudio.item !== null
+             && (pulseAudio?.item ?? null) !== null
              && toolTipDelegate.parentTask.tooltipControlsEnabled
              && toolTipDelegate.parentTask.hasAudioStream
              // Only load for one entry, as the controls only apply to one window.
